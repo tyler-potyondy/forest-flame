@@ -91,7 +91,7 @@ fn find_stack_roots(
     while ptr >= curr_rsp {
         let val = unsafe {*ptr};
         if val != 1 && val & 1 == 1 {
-            stack_roots.push((val - 1) as *mut u64);
+            stack_roots.push(ptr as *mut u64);
         }
         ptr = unsafe {ptr.sub(1)};
     }
@@ -101,7 +101,7 @@ fn find_stack_roots(
 
 fn mark(roots: Vec<*mut u64>) {
     for item in roots {
-        unsafe {heap_mark(item)};
+        unsafe {heap_mark((*item-1) as *mut u64)};
     }
 }
 
@@ -154,15 +154,18 @@ unsafe fn fwd_headers(){
 }
 
 unsafe fn fwd_internal(roots: Vec<*mut u64>){
-    for obj in roots {
-        fwd_heap(obj);
-        update_stack(obj);
+    for stack_ref in roots {
+        let heap_obj = (*stack_ref - 1) as *mut u64;
+        fwd_heap(heap_obj);
+        update_stack(stack_ref);
     }
 }
 
 /// Update references on the stack
-unsafe fn update_stack(obj: *mut u64){
-    
+unsafe fn update_stack(stack_ref: *mut u64){
+    let heap_addr = (*stack_ref - 1) as *mut u64;
+    let heap_val  = *heap_addr;
+    *stack_ref = heap_val + 1;
 }
 
 /// Update internal heap references
@@ -184,7 +187,7 @@ unsafe fn fwd_heap(obj: *mut u64){
             }
             let mut obj_ref = obj.add(2+ind);
             *obj_ref = fwd_addr;
-            fwd_heap(heap_val as *mut u64)
+            fwd_heap((heap_val-1) as *mut u64)
         }
         ind+=1;
     }
@@ -204,7 +207,6 @@ pub unsafe fn snek_gc(
 
     // first find all roots on the stack (i.e. search for anything with heap data tag)
     let roots = find_stack_roots(stack_base,curr_rbp,curr_rsp);
-    println!("FOUND ROOTS {:?}",roots);
 
     // mark active heap objects
     mark(roots.clone());
