@@ -129,13 +129,11 @@ unsafe fn heap_mark(obj_addr: *mut u64) {
 
 }
 
-unsafe fn fwd_headers(){
+unsafe fn fwd_headers(heap_ptr: *const u64){
     let mut from = HEAP_START as *mut u64;
     let mut to = HEAP_START as *mut u64;
 
-    let mut ice = 0;
-
-    while from < HEAP_END as *mut u64 {
+    while from < heap_ptr as *mut u64 {
         if (*from) == 1 {
             *from = (to as u64) + 1;
             to = to.add((2+*to.add(1)) as usize);
@@ -147,9 +145,6 @@ unsafe fn fwd_headers(){
         } else {
             panic!("Misalignment has occured during GC.")
         }
-
-        // if ice == 3 {panic!();}
-        // ice += 1;
     } 
 }
 
@@ -193,6 +188,47 @@ unsafe fn fwd_heap(obj: *mut u64){
     }
 }
 
+/// Iterate through heap compacting references and resetting mark word
+unsafe fn compact(heap_ptr: *const u64) -> u64 {
+    let mut addr = HEAP_START as *mut u64;
+
+    let mut remain_garb = 0;
+    let mut total_garb = 0;
+    // first pass to mark all garbage to zero
+    while addr < heap_ptr as *mut u64 {
+
+        // find garbage memory and length of garbage 
+        if (*addr) == 0 {
+            remain_garb += (addr.add(1).read() + 2) as usize;
+            total_garb += remain_garb;
+            // advance address to end of garbage memory (next heap object)
+            addr = addr.add(remain_garb-1);
+        } 
+        else {
+            let mut temp_addr = addr;
+            // shift every word after this down by the length of garbage memory
+            while temp_addr < heap_ptr as *mut u64 {
+                let mut garb_mem = temp_addr.sub(remain_garb);
+                *garb_mem = *temp_addr;
+                temp_addr = temp_addr.add(1);
+            }
+            remain_garb = 0;
+        }
+        addr = addr.add(1);
+
+    }
+
+    // hop through heap unmarking all metabit used for garbage collection
+    addr = HEAP_START as *mut u64;
+    while addr < heap_ptr.sub(total_garb + 1) as *mut u64 {
+        let obj_len = (addr.add(1).read() + 2) as usize;
+        *addr = 0;
+        addr = addr.add(obj_len);
+    }
+
+    return (total_garb + 1) as u64
+}
+
 /// This function should trigger garbage collection and return the updated heap pointer (i.e., the new
 /// value of `%r15`). See [`snek_try_gc`] for a description of the meaning of the arguments.
 #[export_name = "\x01snek_gc"]
@@ -203,8 +239,6 @@ pub unsafe fn snek_gc(
     curr_rsp: *const u64,
 ) -> *const u64 {
 
-    print_heap();
-
     // first find all roots on the stack (i.e. search for anything with heap data tag)
     let roots = find_stack_roots(stack_base,curr_rbp,curr_rsp);
 
@@ -212,27 +246,31 @@ pub unsafe fn snek_gc(
     mark(roots.clone());
 
     // forward headers of marked objects
-    fwd_headers();
+    fwd_headers(heap_ptr);
 
     // forward internal references and stack references
     fwd_internal(roots.clone());
 
-    print_heap();
+    print_heap(heap_ptr);
+    
+    // compact heap
+    let removed_words = compact(heap_ptr);
+    print_heap(heap_ptr.sub(removed_words as usize));
     
 
-    heap_ptr
+    heap_ptr.sub(removed_words as usize)
 }
 
 
 /// Helper function to print heap
-unsafe fn print_heap() {
+unsafe fn print_heap(heap_ptr: *const u64) {
     let mut ptr = HEAP_START;
     println!("************************");
-    while ptr <= HEAP_END {
+    while ptr <= heap_ptr {
         let val = *ptr;
-        if val != 0 {
+        // if val != 0 {
             println!("{ptr:?}: {:#0x}", val);
-        }
+        // }
         ptr = ptr.add(1);
     }
     println!("************************");
