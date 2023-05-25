@@ -81,6 +81,115 @@ pub unsafe fn snek_try_gc(
     std::process::exit(ErrCode::OutOfMemory as i32)
 }
 
+fn find_stack_roots(
+    stack_base: *const u64,
+    curr_rbp: *const u64,
+    curr_rsp: *const u64,
+)-> Vec<*mut u64> {
+    let mut ptr = stack_base;
+    let mut stack_roots = Vec::new();
+    while ptr >= curr_rsp {
+        let val = unsafe {*ptr};
+        if val != 1 && val & 1 == 1 {
+            stack_roots.push((val - 1) as *mut u64);
+        }
+        ptr = unsafe {ptr.sub(1)};
+    }
+    
+    stack_roots
+}
+
+fn mark(roots: Vec<*mut u64>) {
+    for item in roots {
+        unsafe {heap_mark(item)};
+    }
+}
+
+
+unsafe fn heap_mark(obj_addr: *mut u64) {
+    ///////////////////
+    // obj_addr is the heap address of a heap object
+    ///////////////////
+    
+    // mark this heap object
+    *obj_addr = 1;
+
+    // iterate through remaining items stored in heap object to determine 
+    // if there exists pointer to other heap object, recursively mark these items
+    let obj_len = obj_addr.add(1).read() as usize;
+    let mut ind = 0;
+
+    while ind < obj_len {
+        let heap_val = *obj_addr.add(2+ind);
+        if heap_val != 1 && heap_val & 1 == 1 {
+            heap_mark((heap_val -1) as *mut u64);
+        }
+        ind+=1;
+    }
+
+}
+
+unsafe fn fwd_headers(){
+    let mut from = HEAP_START as *mut u64;
+    let mut to = HEAP_START as *mut u64;
+
+    let mut ice = 0;
+
+    while from < HEAP_END as *mut u64 {
+        if (*from) == 1 {
+            *from = (to as u64) + 1;
+            to = to.add((2+*to.add(1)) as usize);
+            from = from.add((2+*from.add(1)) as usize);
+
+        } else if (*from) == 0 {
+            from = from.add((2+*from.add(1)) as usize);
+
+        } else {
+            panic!("Misalignment has occured during GC.")
+        }
+
+        // if ice == 3 {panic!();}
+        // ice += 1;
+    } 
+}
+
+unsafe fn fwd_internal(roots: Vec<*mut u64>){
+    for obj in roots {
+        fwd_heap(obj);
+        update_stack(obj);
+    }
+}
+
+/// Update references on the stack
+unsafe fn update_stack(obj: *mut u64){
+    
+}
+
+/// Update internal heap references
+unsafe fn fwd_heap(obj: *mut u64){
+    if *obj & 1 == 0 {
+        return
+    }
+    *obj = *obj-1; // mark as forwarded
+
+    let obj_len = (obj).add(1).read() as usize;
+    let mut ind = 0;
+
+    while ind < obj_len {
+        let heap_val = *obj.add(2+ind);
+        if heap_val != 1 && heap_val & 1 == 1 {
+            let mut fwd_addr = *((heap_val-1)as *mut u64);
+            if fwd_addr & 1 == 1 {
+                fwd_addr-= 1;
+            }
+            let mut obj_ref = obj.add(2+ind);
+            *obj_ref = fwd_addr;
+            fwd_heap(heap_val as *mut u64)
+        }
+        ind+=1;
+    }
+}
+
 /// This function should trigger garbage collection and return the updated heap pointer (i.e., the new
 /// value of `%r15`). See [`snek_try_gc`] for a description of the meaning of the arguments.
 #[export_name = "\x01snek_gc"]
@@ -90,7 +199,42 @@ pub unsafe fn snek_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> *const u64 {
+
+    print_heap();
+
+    // first find all roots on the stack (i.e. search for anything with heap data tag)
+    let roots = find_stack_roots(stack_base,curr_rbp,curr_rsp);
+    println!("FOUND ROOTS {:?}",roots);
+
+    // mark active heap objects
+    mark(roots.clone());
+
+    // forward headers of marked objects
+    fwd_headers();
+
+    // forward internal references and stack references
+    fwd_internal(roots.clone());
+
+    print_heap();
+    
+
     heap_ptr
+}
+
+
+/// Helper function to print heap
+unsafe fn print_heap() {
+    let mut ptr = HEAP_START;
+    println!("************************");
+    while ptr <= HEAP_END {
+        let val = *ptr;
+        if val != 0 {
+            println!("{ptr:?}: {:#0x}", val);
+        }
+        ptr = ptr.add(1);
+    }
+    println!("************************");
+
 }
 
 /// A helper function that can called with the `(snek-printstack)` snek function. It prints the stack
