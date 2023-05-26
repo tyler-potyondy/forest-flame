@@ -129,7 +129,7 @@ fn is_heap_obj(obj: u64) -> bool {
     if obj == TRUE || obj == FALSE || obj == 1 {
         return false
     }
-    if obj & 1 == 1 && obj % 8 == 0 {
+    if obj & 1 == 1 && (obj - 1) % 8 == 0 {
         return true
     } 
     false 
@@ -224,7 +224,7 @@ unsafe fn fwd_heap(obj: *mut u64){
 
 /// Iterate through heap compacting references and resetting mark word
 unsafe fn compact(heap_ptr: *const u64) -> u64 {
-    print_heap(heap_ptr);
+    // print_heap(heap_ptr);
     let mut addr = HEAP_START as *mut u64;
 
     let mut remain_garb = 0;
@@ -274,7 +274,7 @@ pub unsafe fn snek_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> *const u64 {
-    print_heap(heap_ptr);
+    // print_heap(heap_ptr);
     snek_print_stack(stack_base,curr_rbp,curr_rsp);
 
     // first find all roots on the stack (i.e. search for anything with heap data tag)
@@ -294,8 +294,8 @@ pub unsafe fn snek_gc(
     // compact heap
     let removed_words = compact(heap_ptr);
 
-    println!("///FINAL HEAP:");
-    print_heap(heap_ptr.sub(removed_words as usize));
+    // println!("///FINAL HEAP:");
+    // print_heap(heap_ptr.sub(removed_words as usize));
 
     heap_ptr.sub(removed_words as usize)
 
