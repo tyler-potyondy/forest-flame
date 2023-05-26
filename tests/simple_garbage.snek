@@ -1,0 +1,11 @@
+(let ((x (vec 10)) (y (vec 11 12 ))) 
+    (block 
+        (let ((z (vec 13 14 y)))
+            (block
+                (set! x 0)
+                (set! y 3)
+                (gc)
+            )
+        )
+    )
+)

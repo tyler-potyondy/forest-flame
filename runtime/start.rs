@@ -77,8 +77,27 @@ pub unsafe fn snek_try_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> *const u64 {
-    eprintln!("out of memory");
-    std::process::exit(ErrCode::OutOfMemory as i32)
+    println!("SNEK TRY CALLED");
+    println!("hh pp {:?}", heap_ptr);
+    print_heap(heap_ptr);
+    println!("count {count}");
+    let new_heap_ptr = snek_gc(
+        heap_ptr,
+        stack_base,
+        curr_rbp,
+        curr_rsp,
+    );
+
+    println!("NEW HEAP PTR {:?}", new_heap_ptr);
+    println!("OLD HEAP PTR {:?}", heap_ptr);
+
+    println!("words removed: {}",((heap_ptr as u64 - new_heap_ptr as u64)/8) as isize);
+    if count > (heap_ptr as u64 - new_heap_ptr as u64) as isize {
+        eprintln!("out of memory");
+        std::process::exit(ErrCode::OutOfMemory as i32)
+    }
+
+    new_heap_ptr
 }
 
 fn find_stack_roots(
@@ -190,6 +209,7 @@ unsafe fn fwd_heap(obj: *mut u64){
 
 /// Iterate through heap compacting references and resetting mark word
 unsafe fn compact(heap_ptr: *const u64) -> u64 {
+    print_heap(heap_ptr);
     let mut addr = HEAP_START as *mut u64;
 
     let mut remain_garb = 0;
@@ -199,7 +219,7 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
 
         // find garbage memory and length of garbage 
         if (*addr) == 0 {
-            remain_garb += (addr.add(1).read() + 2) as usize;
+            remain_garb = (addr.add(1).read() + 2) as usize;
             total_garb += remain_garb;
             // advance address to end of garbage memory (next heap object)
             addr = addr.add(remain_garb-1);
@@ -226,7 +246,7 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
         addr = addr.add(obj_len);
     }
 
-    return (total_garb + 1) as u64
+    return total_garb as u64
 }
 
 /// This function should trigger garbage collection and return the updated heap pointer (i.e., the new
@@ -238,6 +258,8 @@ pub unsafe fn snek_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> *const u64 {
+
+    print_heap(heap_ptr);
 
     // first find all roots on the stack (i.e. search for anything with heap data tag)
     let roots = find_stack_roots(stack_base,curr_rbp,curr_rsp);
@@ -251,14 +273,15 @@ pub unsafe fn snek_gc(
     // forward internal references and stack references
     fwd_internal(roots.clone());
 
-    print_heap(heap_ptr);
+    // print_heap(heap_ptr);
     
     // compact heap
     let removed_words = compact(heap_ptr);
     print_heap(heap_ptr.sub(removed_words as usize));
-    
+    println!("REMO WORD {removed_words}");
 
     heap_ptr.sub(removed_words as usize)
+
 }
 
 
@@ -266,7 +289,7 @@ pub unsafe fn snek_gc(
 unsafe fn print_heap(heap_ptr: *const u64) {
     let mut ptr = HEAP_START;
     println!("************************");
-    while ptr <= heap_ptr {
+    while ptr < heap_ptr {
         let val = *ptr;
         // if val != 0 {
             println!("{ptr:?}: {:#0x}", val);
