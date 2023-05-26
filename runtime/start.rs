@@ -77,10 +77,6 @@ pub unsafe fn snek_try_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> *const u64 {
-    println!("SNEK TRY CALLED");
-    println!("hh pp {:?}", heap_ptr);
-    print_heap(heap_ptr);
-    println!("count {count}");
     let new_heap_ptr = snek_gc(
         heap_ptr,
         stack_base,
@@ -88,14 +84,19 @@ pub unsafe fn snek_try_gc(
         curr_rsp,
     );
 
+    println!("HEAP PTR {:?}", heap_ptr);
     println!("NEW HEAP PTR {:?}", new_heap_ptr);
-    println!("OLD HEAP PTR {:?}", heap_ptr);
+    println!("freed words : {}",(heap_ptr as u64 - new_heap_ptr as u64)/8);
+    println!("REQUESTED WORDS : {count}");
+    println!("INFO {:#0x}",(new_heap_ptr as u64 + 8 as u64) * count as u64);
+    println!("HEAP END --> {:?}",HEAP_END);
+    print_heap(heap_ptr);
 
-    println!("words removed: {}",((heap_ptr as u64 - new_heap_ptr as u64)/8) as isize);
-    if count > (heap_ptr as u64 - new_heap_ptr as u64) as isize {
+    if (new_heap_ptr as u64) + (8 * count) as u64 > HEAP_END as u64 {
         eprintln!("out of memory");
         std::process::exit(ErrCode::OutOfMemory as i32)
     }
+
 
     new_heap_ptr
 }
@@ -209,7 +210,6 @@ unsafe fn fwd_heap(obj: *mut u64){
 
 /// Iterate through heap compacting references and resetting mark word
 unsafe fn compact(heap_ptr: *const u64) -> u64 {
-    print_heap(heap_ptr);
     let mut addr = HEAP_START as *mut u64;
 
     let mut remain_garb = 0;
@@ -219,6 +219,7 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
 
         // find garbage memory and length of garbage 
         if (*addr) == 0 {
+            println!("GARB FOUND...");
             remain_garb = (addr.add(1).read() + 2) as usize;
             total_garb += remain_garb;
             // advance address to end of garbage memory (next heap object)
@@ -232,7 +233,6 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
                 *garb_mem = *temp_addr;
                 temp_addr = temp_addr.add(1);
             }
-            remain_garb = 0;
         }
         addr = addr.add(1);
 
@@ -246,6 +246,7 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
         addr = addr.add(obj_len);
     }
 
+    println!("FW {total_garb}");
     return total_garb as u64
 }
 
@@ -259,8 +260,6 @@ pub unsafe fn snek_gc(
     curr_rsp: *const u64,
 ) -> *const u64 {
 
-    print_heap(heap_ptr);
-
     // first find all roots on the stack (i.e. search for anything with heap data tag)
     let roots = find_stack_roots(stack_base,curr_rbp,curr_rsp);
 
@@ -272,13 +271,9 @@ pub unsafe fn snek_gc(
 
     // forward internal references and stack references
     fwd_internal(roots.clone());
-
-    // print_heap(heap_ptr);
     
     // compact heap
     let removed_words = compact(heap_ptr);
-    print_heap(heap_ptr.sub(removed_words as usize));
-    println!("REMO WORD {removed_words}");
 
     heap_ptr.sub(removed_words as usize)
 
