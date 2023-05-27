@@ -100,7 +100,7 @@ pub unsafe fn snek_try_gc(
     new_heap_ptr
 }
 
-fn find_stack_roots(
+unsafe fn find_stack_roots(
     stack_base: *const u64,
     curr_rbp: *const u64,
     curr_rsp: *const u64,
@@ -125,11 +125,11 @@ fn mark(roots: Vec<*mut u64>) {
     }
 }
 
-fn is_heap_obj(obj: u64) -> bool {
-    if obj == TRUE || obj == FALSE || obj == 1 {
+unsafe fn is_heap_obj(obj: u64) -> bool {
+    if obj == TRUE || obj == FALSE || obj == 1 || obj & 1 == 0{
         return false
     }
-    if obj & 1 == 1 && (obj - 1) % 8 == 0 {
+    if obj & 1 == 1 && obj <= (HEAP_END as u64) && obj >= (HEAP_START as u64) {
         return true
     } 
     false 
@@ -274,7 +274,7 @@ pub unsafe fn snek_gc(
     curr_rbp: *const u64,
     curr_rsp: *const u64,
 ) -> *const u64 {
-    // print_heap(heap_ptr);
+    print_heap(heap_ptr);
     snek_print_stack(stack_base,curr_rbp,curr_rsp);
 
     // first find all roots on the stack (i.e. search for anything with heap data tag)
