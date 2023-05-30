@@ -121,7 +121,7 @@ unsafe fn find_stack_roots(
 
 fn mark(roots: Vec<*mut u64>) {
     for item in roots {
-        unsafe {println!("ROOT HEAP ADDR {:#0x}", (*item - 1))};
+        // unsafe {println!("ROOT HEAP ADDR {:#0x}", (*item - 1))};
         unsafe {heap_mark((*item-1) as *mut u64)};
     }
 }
@@ -159,13 +159,13 @@ unsafe fn heap_mark(obj_addr: *mut u64) {
     while ind < obj_len {
         let heap_val = *obj_addr.add(2+ind);
         if is_heap_obj(heap_val) {
-            println!("AA {:#0x}",heap_val);
+            // println!("AA {:#0x}",heap_val);
             heap_mark((heap_val - 1) as *mut u64);
         }
         ind+=1;
     }
 
-    println!("completed --> ")
+    // println!("completed --> ")
 
 }
 
@@ -303,10 +303,10 @@ pub unsafe fn snek_gc(
     // println!("///FINAL HEAP:");
     // print_heap(heap_ptr);
 
-    println!("completed gc..");
-    println!("curr heap ptr: {:?}", heap_ptr);
-    println!("removed words : {removed_words}");
-    println!("NEXT HEAP ADDR:: -> {:?}",heap_ptr.sub(removed_words as usize));
+    // println!("completed gc..");
+    // println!("curr heap ptr: {:?}", heap_ptr);
+    // println!("removed words : {removed_words}");
+    // println!("NEXT HEAP ADDR:: -> {:?}",heap_ptr.sub(removed_words as usize));
     heap_ptr.sub(removed_words as usize)
 
 }

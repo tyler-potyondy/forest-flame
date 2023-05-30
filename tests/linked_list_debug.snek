@@ -23,6 +23,5 @@
   (block 
   (printall (append list (reverse list)))
   (gc)
-  (print 22)
   )
 )
