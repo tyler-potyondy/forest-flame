@@ -24,6 +24,14 @@ success_tests! {
         file: "linked_list_manipulations.snek",
         expected: "1\n2\n3\n4\n5\n5\n4\n3\n2\n1\nnil"
     },
+    {
+        name: bst_pass,
+        file: "bst.snek",
+        heap_size: 50,
+        expected: "true",
+    },
+
+
 }
 
 runtime_error_tests! {
@@ -39,7 +47,15 @@ runtime_error_tests! {
         file: "vec_get.snek",
         input: "5",
         expected: "",
-    }
+    },
+    {
+        name: bst_run_out_mem,
+        file: "bst.snek",
+        input: "5",
+        heap_size: 5,
+        expected: "out of memory",
+    },
+
 }
 
 static_error_tests! {}

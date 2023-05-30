@@ -1,0 +1,7 @@
+(let ((x (vec 0 0 0)))
+    (block 
+        (gc)
+        (vec 1 1 1)
+        (gc)
+    )
+)

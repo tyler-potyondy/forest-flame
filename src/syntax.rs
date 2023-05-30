@@ -38,6 +38,7 @@ pub enum Expr {
     Input,
     Nil,
     PrintStack,
+    PrintHeap,
     Gc,
 }
 

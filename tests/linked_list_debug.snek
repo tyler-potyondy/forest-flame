@@ -1,5 +1,9 @@
 (fun (range n m)
+  (block 
+  (snek-printheap)
+  (print 33)
   (if (= n m) (vec n nil) (vec n (range (add1 n) m))))
+)
 
 (fun (append list1 list2)
   (if (= list1 nil)
@@ -15,5 +19,10 @@
     (set! list (vec-get list 1))
   ))))
 
-(let ((list (range 1 input)))
-  (printall (append list (reverse list))))
+(let ((list (range 0 input)))
+  (block 
+  (printall (append list (reverse list)))
+  (gc)
+  (print 22)
+  )
+)
