@@ -1,6 +1,6 @@
-(let ((x (vec 10)) (y (vec 11 12 ))) 
+(let ((x (vec 1 2 )) (y (vec 5 6))) 
     (block 
-        (let ((z (vec 13 14 y)))
+        (let ((z (vec 3 4 y)))
             (block
                 (set! x 0)
                 (set! y 3)

@@ -84,21 +84,12 @@ pub unsafe fn snek_try_gc(
         curr_rsp,
     );
 
-    // println!("HEAP PTR {:?}", heap_ptr);
-    // println!("NEW HEAP PTR {:?}", new_heap_ptr);
-    // println!("freed words : {}",(heap_ptr as u64 - new_heap_ptr as u64)/8);
-    // println!("REQUESTED WORDS : {count}");
-    // println!("INFO {:#0x}",(new_heap_ptr as u64 + 8 as u64) * count as u64);
-    // println!("HEAP END --> {:?}",HEAP_END);
-    // print_heap(heap_ptr);
-
     if (new_heap_ptr as u64) + (8 * count) as u64 > HEAP_END as u64 {
         eprintln!("out of memory");
         std::process::exit(ErrCode::OutOfMemory as i32)
     }
 
-    // println!("return val");
-    new_heap_ptr
+    return new_heap_ptr
 }
 
 unsafe fn find_stack_roots(
@@ -121,7 +112,6 @@ unsafe fn find_stack_roots(
 
 fn mark(roots: Vec<*mut u64>) {
     for item in roots {
-        // unsafe {println!("ROOT HEAP ADDR {:#0x}", (*item - 1))};
         unsafe {heap_mark((*item-1) as *mut u64)};
     }
 }
@@ -154,19 +144,13 @@ unsafe fn heap_mark(obj_addr: *mut u64) {
     let obj_len = obj_addr.add(1).read() as usize;
     let mut ind = 0;
 
-    // println!("OBJ UPDATE --> {:#0x}",*obj_addr);
-    // println!("next len {obj_len}");
     while ind < obj_len {
         let heap_val = *obj_addr.add(2+ind);
         if is_heap_obj(heap_val) {
-            // println!("AA {:#0x}",heap_val);
             heap_mark((heap_val - 1) as *mut u64);
         }
         ind+=1;
     }
-
-    // println!("completed --> ")
-
 }
 
 unsafe fn fwd_headers(heap_ptr: *const u64){
@@ -188,11 +172,21 @@ unsafe fn fwd_headers(heap_ptr: *const u64){
     } 
 }
 
-unsafe fn fwd_internal(roots: Vec<*mut u64>){
+unsafe fn fwd_internal(roots: Vec<*mut u64>, heap_ptr: *const u64){
     for stack_ref in roots {
         let heap_obj = (*stack_ref - 1) as *mut u64;
         fwd_heap(heap_obj);
         update_stack(stack_ref);
+    }
+
+    let mut addr = HEAP_START as *mut u64;
+    while addr < heap_ptr as *mut u64 {
+        let obj_len = addr.add(1).read();
+        if (obj_len as i64) < 0 {
+            let obj_len_addr = addr.add(1);
+            *obj_len_addr = ((obj_len as i64) * -1) as u64;
+        }
+        addr = addr.add((addr.add(1).read() + 2) as usize);
     }
 }
 
@@ -200,26 +194,27 @@ unsafe fn fwd_internal(roots: Vec<*mut u64>){
 unsafe fn update_stack(stack_ref: *mut u64){
     let heap_addr = (*stack_ref - 1) as *mut u64;
     let heap_val  = *heap_addr;
-    *stack_ref = heap_val + 1;
+    *stack_ref = heap_val;
 }
 
 /// Update internal heap references
 unsafe fn fwd_heap(obj: *mut u64){
-    if *obj & 1 == 0 {
-        return
-    }
-    *obj = *obj-1; // mark as forwarded
-
     let obj_len = (obj).add(1).read() as usize;
-    let mut ind = 0;
 
+    if (obj_len as i64) < 0 {
+        return
+    } else 
+    {   
+        // mark as forwarded
+        let obj_len_addr = obj.add(1);
+        *obj_len_addr = ((obj_len as i64) * -1) as u64;
+    }
+
+    let mut ind = 0;
     while ind < obj_len {
         let heap_val = *obj.add(2+ind);
         if is_heap_obj(heap_val) {
             let mut fwd_addr = *((heap_val-1)as *mut u64);
-            // if fwd_addr & 1 == 1 {
-            //     fwd_addr-= 1;
-            // }
             let mut obj_ref = obj.add(2+ind);
             *obj_ref = fwd_addr;
             fwd_heap((heap_val-1) as *mut u64)
@@ -230,24 +225,21 @@ unsafe fn fwd_heap(obj: *mut u64){
 
 /// Iterate through heap compacting references and resetting mark word
 unsafe fn compact(heap_ptr: *const u64) -> u64 {
-    // print_heap(heap_ptr);
     let mut addr = HEAP_START as *mut u64;
 
     let mut remain_garb = 0;
     let mut total_garb = 0;
 
     while addr < heap_ptr as *mut u64 {
-        // println!("CURR ADDR : {:?}",addr);
         // find garbage memory and length of garbage 
         if (*addr) == 0 {
-            // println!("Found garb at addr {:?}",addr);
             remain_garb = (addr.add(1).read() + 2) as usize;
             total_garb += remain_garb;
             // advance address to end of garbage memory (next heap object)
-            addr = addr.add(remain_garb);
+            // addr = addr.add(remain_garb);
+            // println!("Next obj at addr {:?}",addr);
         
-            let mut temp_addr = addr;
-            // println!("SHIFT START {:?}",temp_addr);
+            let mut temp_addr = addr.add(remain_garb);
             // shift every word after this down by the length of garbage memory
             while temp_addr < heap_ptr as *mut u64 {
                 let mut garb_mem = temp_addr.sub(remain_garb);
@@ -257,17 +249,19 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
         } else {
             addr = addr.add((addr.add(1).read() + 2) as usize) as *mut u64
         }
+
     }
 
     // hop through heap unmarking all metabit used for garbage collection
     addr = HEAP_START as *mut u64;
     while addr < heap_ptr.sub(total_garb + 1) as *mut u64 {
         let obj_len = (addr.add(1).read() + 2) as usize;
+
         *addr = 0;
         addr = addr.add(obj_len);
     }
 
-    // println!("FW {total_garb}");
+
     return total_garb as u64
 }
 
@@ -286,7 +280,6 @@ pub unsafe fn snek_gc(
     // first find all roots on the stack (i.e. search for anything with heap data tag)
     let roots = find_stack_roots(stack_base,curr_rbp,curr_rsp);
 
-    // println!("Found roots:: {:?}",roots);
     // mark active heap objects
     mark(roots.clone());
 
@@ -294,21 +287,11 @@ pub unsafe fn snek_gc(
     fwd_headers(heap_ptr);
 
     // forward internal references and stack references
-    fwd_internal(roots.clone());
-    
-    // print_heap(heap_ptr);
+    fwd_internal(roots.clone(), heap_ptr);
+
     // compact heap
     let removed_words = compact(heap_ptr);
-
-    // println!("///FINAL HEAP:");
-    // print_heap(heap_ptr);
-
-    // println!("completed gc..");
-    // println!("curr heap ptr: {:?}", heap_ptr);
-    // println!("removed words : {removed_words}");
-    // println!("NEXT HEAP ADDR:: -> {:?}",heap_ptr.sub(removed_words as usize));
     heap_ptr.sub(removed_words as usize)
-
 }
 
 
@@ -316,8 +299,9 @@ pub unsafe fn snek_gc(
 #[export_name = "\x01snek_print_heap"]
 unsafe fn print_heap(heap_ptr: *const u64) {
     let mut ptr = HEAP_START;
+    println!("HEAP PTR {:?}", heap_ptr);
     println!("************************");
-    while ptr < heap_ptr {
+    while ptr < HEAP_END {
         let val = *ptr;
         // if val != 0 {
             println!("{ptr:?}: {:#0x}", val);
