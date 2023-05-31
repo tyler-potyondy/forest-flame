@@ -235,11 +235,13 @@ unsafe fn compact(heap_ptr: *const u64) -> u64 {
         if (*addr) == 0 {
             remain_garb = (addr.add(1).read() + 2) as usize;
             total_garb += remain_garb;
-            // advance address to end of garbage memory (next heap object)
-            // addr = addr.add(remain_garb);
-            // println!("Next obj at addr {:?}",addr);
-        
+            
+            // advance address to end of garbage memory (next heap object)        
             let mut temp_addr = addr.add(remain_garb);
+            if temp_addr >= heap_ptr as *mut u64 {
+                break
+            }
+
             // shift every word after this down by the length of garbage memory
             while temp_addr < heap_ptr as *mut u64 {
                 let mut garb_mem = temp_addr.sub(remain_garb);
@@ -301,7 +303,7 @@ unsafe fn print_heap(heap_ptr: *const u64) {
     let mut ptr = HEAP_START;
     println!("HEAP PTR {:?}", heap_ptr);
     println!("************************");
-    while ptr < HEAP_END {
+    while ptr < heap_ptr {
         let val = *ptr;
         // if val != 0 {
             println!("{ptr:?}: {:#0x}", val);

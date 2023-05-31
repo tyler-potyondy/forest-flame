@@ -49,14 +49,7 @@
         (if (> x input) (break currTree) 
         (block 
             (set! currTree (addNode currTree x))
-            
             (set! x (+ x 1))
-            (print currTree)
-            (print 2022)
-            (gc)
-            
-            (print currTree)
-
         )
         )
     )

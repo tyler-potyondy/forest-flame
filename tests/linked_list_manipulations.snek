@@ -15,5 +15,5 @@
     (set! list (vec-get list 1))
   ))))
 
-(let ((list (range 1 input)))
+(let ((list (range 1 5)))
   (printall (append list (reverse list))))
